@@ -5,6 +5,7 @@ import os
 from decimal import Decimal, ROUND_UP, ROUND_DOWN, ROUND_HALF_UP
 from xlsxwriter import Workbook
 
+# Funciones de cálculo y evaluación (se mantienen iguales)
 def calculate_ideal_size(days, last_sales_day, tvu, remove_product):
     if any(val == 'PRODUCTO SIN CARGA' for val in [days, last_sales_day, tvu, remove_product]):
         return '0'
@@ -79,38 +80,28 @@ def safe_round(value):
     except:
         return value.upper()
 
+def clean_value(value):
+    if pd.isna(value) or value in [float('inf'), float('-inf')]:
+        return ''
+    return value
+
 resultArray = []
-
-def get_valid_int(prompt):
-    while True:
-        try:
-            return int(input(prompt))
-        except ValueError:
-            print("Entrada no válida. Por favor, ingrese un número entero.")
-
-def get_valid_float(prompt):
-    while True:
-        try:
-            return float(input(prompt))
-        except ValueError:
-            print("Entrada no válida. Por favor, ingrese un número válido.")
 
 print('============== INGRESO DE USUARIO ==============')
 days = 28
-last_sales_day = get_valid_int('Ingrese la venta de los últimos días: ')
+last_sales_day = int(input('Ingrese la venta de los últimos días: '))
 tvu = 60
 remove_product = 7
-ddi_master_pack = get_valid_float('Ingrese el DDI del masterpack: ')
-ddi_packqty = get_valid_float('Ingrese el DDI del packqty: ')
-ddi_innerpack = get_valid_float('Ingrese el DDI del innerpack: ')
-stock = get_valid_int('Ingrese la cantidad de stock: ')
+ddi_master_pack = input('Ingrese el DDI del masterpack: ')
+ddi_packqty = input('Ingrese el DDI del packqty: ')
+ddi_innerpack = input('Ingrese el DDI del innerpack: ')
+stock = int(input('Ingrese la cantidad de stock: '))
 
 print('============== INGRESO DE ARCHIVO ==============')
 archive = input("Ingrese el nombre del archivo: ") + '.xlsx'
 sheet_name = input("Ingrese el nombre de la hoja: ")
 df = pd.read_excel('archivos/' + archive, sheet_name=sheet_name, header=1, index_col=None)
 
-# Aplicar safe_round a las columnas relevantes
 df['DDI_Masterpack'] = df['DDI_Masterpack'].apply(safe_round)
 df['DDI_Packqty'] = df['DDI_Packqty'].apply(safe_round)
 df['DDI_Innerpack'] = df['DDI_Innerpack'].apply(safe_round)
@@ -134,6 +125,7 @@ for index, row in df.iterrows():
         found = True
         break
 
+print(row_ddi_masterpack)
 if found:
     ideal_size = calculate_ideal_size(days, last_sales_day, tvu, remove_product)
     validate_masterpack = evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day)
@@ -154,41 +146,63 @@ if found:
         'validate_masterpack': validate_masterpack,
         'ideal_size': ideal_size
     }
+    
 
     output_dir = 'json_results'
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Guardar en formato JSON
     output_file_json = os.path.join(output_dir, "result.json")
+    resultArray.append(results)
     with open(output_file_json, 'w') as f:
-        resultArray.append(results)
-        json.dump(resultArray, f, indent=4)  # Cambiado para guardar una lista de resultados
+        json.dump(resultArray, f, indent=4)
     
     print(f'Archivo JSON guardado correctamente en la ruta {output_dir} con el nombre result.json')
 
     ######### ARCHIVO EXCEL ############
-    # Guardar en formato Excel
     output_file_excel = os.path.join(output_dir, "result.xlsx")
     
-    # Leer el archivo existente si existe
     if os.path.exists(output_file_excel):
         with pd.ExcelFile(output_file_excel) as xls:
-            existing_df = pd.read_excel(xls, sheet_name='Results', header=1)
-            existing_data = existing_df.iloc[2:].reset_index(drop=True)  # Leer datos existentes excluyendo título y encabezados
+            existing_df = pd.read_excel(xls, sheet_name='Results', header=2, index_col=None)
+            existing_data = existing_df.copy()
     else:
-        existing_data = pd.DataFrame()  # Crear un DataFrame vacío si no hay datos existentes
+        existing_data = pd.DataFrame(columns=[
+            'days', 'stock', 'VtaUltDiasCant', 'tvu', 'remove_product', 
+            'ddi_master_pack', 'ddi_packqty', 'ddi_innerpack', 
+            'validate_packqty', 'validate_innerpack', 'validate_masterpack', 
+            'ideal_size'
+        ])
 
-    # Crear un DataFrame para el nuevo registro
+    
     new_record_df = pd.DataFrame([results])
+    
+    # Usar map en lugar de applymap
+    existing_data = existing_data.applymap(clean_value)
+    new_record_df = new_record_df.applymap(clean_value)
+    
+    print(results)
 
-    # Concatenar los datos existentes con el nuevo registro
-    all_data_df = pd.concat([existing_data, new_record_df], ignore_index=True)
 
-    # Guardar el DataFrame actualizado en el archivo Excel
     with pd.ExcelWriter(output_file_excel, engine='xlsxwriter') as writer:
         worksheet = writer.book.add_worksheet('Results')
         
+        field_titles = {
+            'days': 'DÍAS',
+            'stock': 'STOCK',
+            'VtaUltDiasCant': 'VTA_ULT_DÍAS',
+            'tvu': 'TVU',
+            'remove_product': 'REM_PROD',
+            'ddi_master_pack': 'DDI_MASTERPACK',
+            'ddi_packqty': 'DDI_PACKQTY',
+            'ddi_innerpack': 'DDI_INNERPACK',
+            'validate_packqty': 'VALIDAR_PACKQTY',
+            'validate_innerpack': 'VALIDAR_INNERPACK',
+            'validate_masterpack': 'VALIDAR_MASTERPACK',
+            'ideal_size': 'TAMAÑO_IDEAL'
+        }
+
+
         title_format = writer.book.add_format({
             'bold': True,
             'font_size': 14,
@@ -196,25 +210,91 @@ if found:
             'valign': 'vcenter',
             'font_name': 'Arial',
         })
-        worksheet.merge_range('A1:M1', 'RESULTADOS VALIDACIÓN', title_format)
+        worksheet.merge_range('A1:L1', 'RESULTADOS VALIDACIÓN', title_format)
         
         header_format = writer.book.add_format({
             'bold': True,
             'text_wrap': True,
             'valign': 'top',
-            'fg_color': '#DCE6F1',
+            'border': 1,
+            'align': 'center',
+            'bg_color': '#fcf3cf'
+
+        })
+        decimal_format = writer.book.add_format({
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter',
+        })
+
+        green_fill = writer.book.add_format({
+            'bg_color': '#abebc6',  # color verde
+            'border': 1
         })
         
-        # Escribir encabezados
-        headers = list(results.keys())
-        worksheet.write_row('A2', headers, header_format)
+        text_format = writer.book.add_format({
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter',
+            'num_format': '@'  # Formato de texto para mantener los ceros
+        })
+
+        headers = ['Dias', 'Stock', 'Vta. dias', 'Tvu', 'Rem. producto', 
+                   'DDI Masterpack', 'DDI Packqty', 'DDI Innerpack', 
+                   'Validar Packqty', 'Validar Innerpack', 'Validar Masterpack', 
+                   'Tamaño Ideal']
         
-        # Escribir datos
-        for row_num, record in enumerate(all_data_df.values.tolist(), start=3):
-            worksheet.write_row(f'A{row_num}', record)
+        for col_num, header in enumerate(headers):
+            worksheet.write(2, col_num, header, header_format)
+
+        for row_num, row in existing_data.iterrows():
+            for col_num, value in enumerate(row):
+                # cell_value = value if not isinstance(value, (int, float)) else float(value)
+                # worksheet.write(row_num + 3, col_num, cell_value, decimal_format)
+                if headers[col_num] == 'DDI Masterpack' or header[col_num] == "DDI Packqty" or header[col_num] == "DDI Inerpack":
+                    worksheet.write(row_num + 3, col_num, value, text_format)  # Usar formato de texto
+                else:
+                    cell_value = value if not isinstance(value, (int, float)) else float(value)
+                    worksheet.write(row_num + 3, col_num, cell_value, decimal_format)
+
+        start_row = len(existing_data) + 3
+        end_row = start_row + len(new_record_df) - 1
+
+        # Escribir los nuevos registros
+        for row_num, row in new_record_df.iterrows():
+            for col_num, value in enumerate(row):
+                if headers[col_num] == 'DDI Masterpack' or header[col_num] == "DDI Packqty" or header[col_num] == "DDI Inerpack":
+                    worksheet.write(start_row, col_num, value, text_format)  # Usar formato de texto
+                else:
+                    cell_value = value if not isinstance(value, (int, float)) else float(value)
+                    worksheet.write(start_row, col_num, cell_value, decimal_format)
+            start_row += 1
         
-        # Ajustar el ancho de las columnas
-        for i, header in enumerate(headers):
-            worksheet.set_column(i, i, len(header) + 2)
-    
-    print(f'Archivo Excel guardado correctamente en la ruta {output_dir} con el nombre result.xlsx')
+        # Aplicar formato condicional para todos los registros
+        worksheet.conditional_format(3, 8, len(existing_data) + len(new_record_df) + 2, 11, {
+            'type': 'cell',
+            'criteria': 'not equal to',
+            'value': '""',
+            'format': green_fill
+        })
+
+        column_widths = {
+            0: 10,  
+            1: 10,  
+            2: 12,  
+            3: 10,  
+            4: 17,  
+            5: 20,  
+            6: 20,  
+            7: 20,  
+            8: 20,  
+            9: 20,  
+            10: 20, 
+            11: 15, 
+        }
+        for col_num, width in column_widths.items():
+            worksheet.set_column(col_num, col_num, width)
+        
+        print(f'Archivo Excel guardado correctamente en la ruta {output_file_excel}')
+else:
+    print("No se encontraron coincidencias en el archivo Excel.")
