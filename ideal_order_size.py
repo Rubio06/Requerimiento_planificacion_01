@@ -111,30 +111,75 @@ print(df.columns)
 
 print('============== ARCHIVO EXCEL ==============')
 for index, row in df.iterrows():
+    # Campos adicionales
+    fecha = row['Fecha'] 
+    id_tienda = row['idtienda']
+    tda_nombre = row['TdaNombre']
+    dist_nombre = row['DistNombre']
+    tda_clasif_oper = row['TdaClasifOper']
+    id_producto = row['IdProducto']
+    prod_nombre = row['ProdNombre']
+    dpto_prod = row['DptoProd']
+    clase_prod = row['ClaseProd']
+    bloqueo_general = row['BloqueoGeneral']
+    bloqueo_tienda_compra = row['BloqueoTiendaCompra']
+    id_proveedor = row['Idproveedor']
+    provee_nombre = row['ProveeNombre']
+    stock = int(row['Stock']) if pd.notna(row['Stock']) else None
+    
+    packqty = row['Packqty'] if pd.notna(row['Packqty']) else ''
+    inner_display = row['InnerDisplay'] if pd.notna(row['InnerDisplay']) else ''
+    master_pack = row['MasterPack'] if pd.notna(row['MasterPack']) else ''
+    costo_promedio = row['CostoPromedio'] if pd.notna(row['CostoPromedio']) else ''
+    vta_ult_dias_soles_costo = row['VtaUltDiasSolesCosto'] if pd.notna(row['VtaUltDiasSolesCosto']) else ''
     last_sales_day = int(row['VtaUltDiasCant']) if pd.notna(row['VtaUltDiasCant']) else None
-    ddi_master_pack = row['DDI_Masterpack']
+    int_stock1 = row['IntStock1'] if pd.notna(row['IntStock1']) else ''
+    on_order = row['On_Order'] if pd.notna(row['On_Order']) else ''
+    cantidad_confirmada_slip = row['Cantidad_Confirmada_Slip'] if pd.notna(row['Cantidad_Confirmada_Slip']) else ''
+    cantidad_pendiente_directiva = row['Cantidad_Pendiente_Directiva'] if pd.notna(row['Cantidad_Pendiente_Directiva']) else ''
     ddi_packqty = row['DDI_Packqty']
     ddi_innerpack = row['DDI_Innerpack']
-    stock = int(row['Stock']) if pd.notna(row['Stock']) else None
-
-    ideal_size = calculate_ideal_size(days, last_sales_day, tvu, remove_product)
-    validate_masterpack = evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day)
+    ddi_master_pack = row['DDI_Masterpack']
     validate_packqty = evaluate_packqty(ddi_packqty, tvu, stock, last_sales_day)
     validate_innerpack = evaluate_innerpack(ddi_innerpack, tvu, stock, last_sales_day)
-
+    validate_masterpack = evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day)
+    ideal_size = calculate_ideal_size(days, last_sales_day, tvu, remove_product)
+    
+    # Campos adicionales para agregar
     results = {
+        'Fecha': fecha.strftime('%d/%m/%Y') if pd.notna(fecha) else '',
+        'idtienda': id_tienda,
+        'TdaNombre': tda_nombre,
+        'DistNombre': dist_nombre,
+        'TdaClasifOper': tda_clasif_oper,
+        'IdProducto': id_producto,
+        'ProdNombre': prod_nombre,
+        'DptoProd': dpto_prod,
+        'ClaseProd': clase_prod,
+        'BloqueoGeneral': bloqueo_general,
+        'BloqueoTiendaCompra': bloqueo_tienda_compra,
+        'Idproveedor': id_proveedor,
+        'ProveeNombre': provee_nombre,
         'Dias': days,
         'Stock': stock,
+        'Packqty': packqty,
+        'InnerDisplay': inner_display,
+        'MasterPack': master_pack,
+        'CostoPromedio': costo_promedio,
+        'VtaUltDiasSolesCosto': vta_ult_dias_soles_costo,
         'VtaUltDiasCant': last_sales_day,
-        'Tvu': tvu,
-        'Remover producto': remove_product,
-        'DDI Masterpack': safe_round(ddi_master_pack),
-        'DDI Packqty': safe_round(ddi_packqty),
-        'DDI Innerpack': safe_round(ddi_innerpack),
-        'Validar Packqty': validate_packqty,
-        'Validar Innerpack': validate_innerpack,
-        'Validar Masterpack': validate_masterpack,
-        'Tamaño ideal': ideal_size,
+        'IntStock1': int_stock1,
+        'On_Order': on_order,
+        'Cantidad_Confirmada_Slip': cantidad_confirmada_slip,
+        'Cantidad_Pendiente_Directiva': cantidad_pendiente_directiva,
+        'DDI_Packqty': safe_round(ddi_packqty),
+        'DDI_Innerpack': safe_round(ddi_innerpack),
+        'DDI_Masterpack': safe_round(ddi_master_pack),
+        'TVU': tvu,
+        'Valida_Packqty': validate_packqty,
+        'Valida_IP': validate_innerpack,
+        'Valida_MP': validate_masterpack,
+        'Tamaño ideal (unidades)': ideal_size
     }
     
     resultArray.append(results)
@@ -147,61 +192,78 @@ output_file_excel = 'UMP_PROV487_20240604_RESULTS.xlsx'
 # Guardar en archivo Excel
 with pd.ExcelWriter(output_file_excel, engine='xlsxwriter') as writer:
     # Crear hoja de resultados
-    df.to_excel(writer, sheet_name='Resultados', index=False, startrow=2)
+    df.to_excel(writer, sheet_name='Resultados', index=False, startrow=1)
 
     # Obtener el objeto de la hoja
     worksheet = writer.sheets['Resultados']
     
-    # Definir formatos
-    title_format = writer.book.add_format({
-        'bold': True,
-        'align': 'center',
-    })
-
-    header_format = writer.book.add_format({
-        'bold': True,
-        'align': 'center',
-        'bg_color': '#d9ead3',
-        'border': 1
-    })
-
-    data_format = writer.book.add_format({
-        'align': 'center',
+    format_data = writer.book.add_format({
         'border': 1,
+        'align': 'center'
     })
+    
+    format_data = writer.book.add_format({
+        'align': 'center'
+    })
+    
+    border_format = writer.book.add_format({'border': 1})
+
+
+    for col_num, col in enumerate(df.columns):
+        max_length = max(df[col].astype(str).apply(len).max(), len(col))
+        worksheet.set_column(col_num, col_num, max_length, format_data)
     
     green_format = writer.book.add_format({
         'bg_color': '#d0ece7',
         'border': 1,
         'align': 'center',
-
     })
+    border_format = writer.book.add_format({
+        'border': 1,
+        'align': 'center'
+    })
+    
+    cell_format = writer.book.add_format({
+        'align': 'center',
+        'bg_color': '#fcf3cf'
+    })
+    
+    row = 0  # Fila específica (indexada desde 0)
+    col = 28   # Columna específica (indexada desde 0)
 
-    # Escribir título y encabezados
-    worksheet.merge_range('A1:L1', 'RESULTADOS VALIDACIÓN', title_format)
-    worksheet.merge_range('A2:L2', '', title_format)
+    # Agregar el dato en la celda específica
+    worksheet.write(row, col, remove_product, cell_format)
+    
+    row = 0  # Fila específica (indexada desde 0)
+    col = 19   # Columna específica (indexada desde 0)
 
-    for col_num, col_name in enumerate(df.columns):
-        worksheet.write(2, col_num, col_name, header_format)
+    # Agregar el dato en la celda específica
+    worksheet.write(row, col, days, cell_format)
+    
+    col_DptoProd = df.columns.get_loc('DptoProd')
+    worksheet.set_column(col_DptoProd, col_DptoProd, 25) 
+    
+    col_ProveeNombre = df.columns.get_loc('ProveeNombre')
+    worksheet.set_column(col_ProveeNombre, col_ProveeNombre, 35) 
+    
+    col_TVU = df.columns.get_loc('TVU')
+    worksheet.set_column(col_TVU, col_TVU, 10) 
+    
+    # Aplicar formato a toda la tabla de datos
+    num_rows = len(df.index) + 2
+    worksheet.conditional_format(2, 0, num_rows, len(df.columns) - 1, {'type': 'no_blanks', 'format': border_format})
 
-    # Aplicar formato a las celdas
-    for col_num, col in enumerate(df.columns):
-        worksheet.set_column(col_num, col_num, 20, data_format)
 
-    # Aplicar color verde a las columnas específicas
-    start_row = 3  # La fila inicial después de los encabezados
-    end_row = len(df) + 3  # La fila final para todos los registros
+    start_col_name = 'Valida_Packqty'
+    end_col_name = 'Tamaño ideal (unidades)'
+    
+    start_col_index = df.columns.get_loc(start_col_name)
+    end_col_index = df.columns.get_loc(end_col_name)
+    
+    start_row = 2 
+    end_row = start_row + len(df) - 1
+    
+    for col_num in range(start_col_index, end_col_index + 1):
+        for row_num in range(start_row, end_row + 1):
+            worksheet.write(row_num, col_num, df.iloc[row_num - start_row, col_num], green_format)
 
-    green_columns = {
-        'Validar Packqty': 8,  # Columna I (índice 8)
-        'Validar Innerpack': 9,  # Columna J (índice 9)
-        'Validar Masterpack': 10,  # Columna K (índice 10)
-        'Tamaño ideal': 11  # Columna L (índice 11)
-    }
-
-    for col_name, col_num in green_columns.items():
-        for row_num in range(start_row, end_row):
-            cell_value = df.iloc[row_num - start_row, col_num]
-            worksheet.write(row_num, col_num, cell_value, green_format)
-
-print(f'Archivo Excel guardado correctamente en la ruta {output_file_excel}')

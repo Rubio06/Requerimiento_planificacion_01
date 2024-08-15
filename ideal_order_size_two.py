@@ -2,18 +2,27 @@ import pandas as pd
 import math
 import json
 import os
-from decimal import Decimal, ROUND_UP, ROUND_DOWN, ROUND_HALF_UP
-from xlsxwriter import Workbook
+from decimal import Decimal, ROUND_HALF_UP
 
-# Funciones de cálculo y evaluación (se mantienen iguales)
+# Funciones de cálculo y evaluación
 def calculate_ideal_size(days, last_sales_day, tvu, remove_product):
-    if any(val == 'PRODUCTO SIN CARGA' for val in [days, last_sales_day, tvu, remove_product]):
-        return 0
-    return int(math.trunc((last_sales_day / days) * (tvu - remove_product)))
+    if days is None or last_sales_day is None:
+        return '0'
+    
+    if any(val in ['PRODUCTO SIN CARGA', 'PRODUCTO SIN VENTA'] for val in [days, last_sales_day, tvu, remove_product]):
+        return '0'
+    
+    if days == 0:
+        return '0'
+
+    return str(math.trunc((last_sales_day / days) * (tvu - remove_product)))
 
 def evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day):
     if ddi_master_pack in ['PRODUCTO SIN VENTA', 'PRODUCTO SIN CARGA']:
         return ddi_master_pack.upper()
+    
+    if pd.isna(ddi_master_pack):
+        return 'PRODUCTO SIN CARGA'
     
     try:
         ddi_master_pack = float(ddi_master_pack)
@@ -33,6 +42,9 @@ def evaluate_packqty(ddi_packqty, tvu, stock, last_sales_day):
     if ddi_packqty in ['PRODUCTO SIN VENTA', 'PRODUCTO SIN CARGA']:
         return ddi_packqty.upper()
     
+    if pd.isna(ddi_packqty):
+        return 'PRODUCTO SIN CARGA'
+    
     try:
         ddi_packqty = float(ddi_packqty)
     except ValueError:
@@ -51,6 +63,9 @@ def evaluate_innerpack(ddi_innerpack, tvu, stock, last_sales_day):
     if ddi_innerpack in ['PRODUCTO SIN VENTA', 'PRODUCTO SIN CARGA']:
         return ddi_innerpack.upper()
     
+    if pd.isna(ddi_innerpack):
+        return 'PRODUCTO SIN CARGA'
+    
     try:
         ddi_innerpack = float(ddi_innerpack)
     except ValueError:
@@ -68,179 +83,148 @@ def evaluate_innerpack(ddi_innerpack, tvu, stock, last_sales_day):
 def safe_round(value):
     try:
         value_data = Decimal(str(value))
-        round_up_value = value_data.quantize(Decimal('0.00'), rounding=ROUND_UP)
-        round_down_value = value_data.quantize(Decimal('0.00'), rounding=ROUND_DOWN)
-        
-        if round_up_value == value_data:
-            return round_up_value
-        elif round_down_value == value_data:
-            return round_down_value
-        else:
-            return value_data.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
+        return value_data.quantize(Decimal('0.00'), rounding=ROUND_HALF_UP)
     except:
-        return value.upper()
+        return value
 
 def clean_value(value):
     if pd.isna(value) or value in [float('inf'), float('-inf')]:
         return ''
     return value
 
-resultArray = []
+print('============== INGRESO DE ARCHIVO ==============')
+archive = input("Ingrese el nombre del archivo (sin extensión): ") + '.xlsx'
+sheet_name = input("Ingrese el nombre de la hoja: ")
 
-print('============== INGRESO DE USUARIO ==============')
+# Leer el archivo Excel existente
+output_file_excel = f'archivos/{archive}'
+df = pd.read_excel(output_file_excel, sheet_name=sheet_name, header=1, index_col=None)
+
+# Asignar valores predeterminados
 days = 28
-last_sales_day = int(input('Ingrese la venta de los últimos días: '))
 tvu = 60
 remove_product = 7
-ddi_master_pack = input('Ingrese el DDI del masterpack: ')
-ddi_packqty = input('Ingrese el DDI del packqty: ')
-ddi_innerpack = input('Ingrese el DDI del innerpack: ')
-stock = int(input('Ingrese la cantidad de stock: '))
 
-print('============== INGRESO DE ARCHIVO ==============')
-archive = input("Ingrese el nombre del archivo: ") + '.xlsx'
-sheet_name = input("Ingrese el nombre de la hoja: ")
-df = pd.read_excel('archivos/' + archive, sheet_name=sheet_name, header=1, index_col=None)
+resultArray = []
 
-df['DDI_Masterpack'] = df['DDI_Masterpack'].apply(safe_round)
-df['DDI_Packqty'] = df['DDI_Packqty'].apply(safe_round)
-df['DDI_Innerpack'] = df['DDI_Innerpack'].apply(safe_round)
+print(df.columns)
 
 print('============== ARCHIVO EXCEL ==============')
-found = False
 for index, row in df.iterrows():
-    row_ddi_masterpack = row['DDI_Masterpack']
-    row_vta_ultdiascant = int(row['VtaUltDiasCant']) if pd.notna(row['VtaUltDiasCant']) else None
-    row_ddi_packqty = row['DDI_Packqty']
-    row_ddi_innerpack = row['DDI_Innerpack']
-    row_stock = int(row['Stock']) if pd.notna(row['Stock']) else None
-
-    ddi_masterpack_match = (row_ddi_masterpack == safe_round(ddi_master_pack))
-    vta_ultdiascant_match = (row_vta_ultdiascant == last_sales_day)
-    ddi_packqty_match = (row_ddi_packqty == safe_round(ddi_packqty))
-    ddi_innerpack_match = (row_ddi_innerpack == safe_round(ddi_innerpack))
-    stock_match = (row_stock == stock)
-
-    if ddi_masterpack_match and vta_ultdiascant_match and ddi_packqty_match and ddi_innerpack_match and stock_match:
-        found = True
-        break
-
-if found:
-    ideal_size = calculate_ideal_size(days, last_sales_day, tvu, remove_product)
-    validate_masterpack = evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day)
+    # Campos adicionales
+    fecha = row['Fecha'] 
+    id_tienda = row['idtienda']
+    tda_nombre = row['TdaNombre']
+    dist_nombre = row['DistNombre']
+    tda_clasif_oper = row['TdaClasifOper']
+    id_producto = row['IdProducto']
+    prod_nombre = row['ProdNombre']
+    dpto_prod = row['DptoProd']
+    clase_prod = row['ClaseProd']
+    bloqueo_general = row['BloqueoGeneral']
+    bloqueo_tienda_compra = row['BloqueoTiendaCompra']
+    id_proveedor = row['Idproveedor']
+    provee_nombre = row['ProveeNombre']
+    stock = int(row['Stock']) if pd.notna(row['Stock']) else None
+    
+    packqty = row['Packqty'] if pd.notna(row['Packqty']) else ''
+    inner_display = row['InnerDisplay'] if pd.notna(row['InnerDisplay']) else ''
+    master_pack = row['MasterPack'] if pd.notna(row['MasterPack']) else ''
+    costo_promedio = row['CostoPromedio'] if pd.notna(row['CostoPromedio']) else ''
+    vta_ult_dias_soles_costo = row['VtaUltDiasSolesCosto'] if pd.notna(row['VtaUltDiasSolesCosto']) else ''
+    last_sales_day = int(row['VtaUltDiasCant']) if pd.notna(row['VtaUltDiasCant']) else None
+    int_stock1 = row['IntStock1'] if pd.notna(row['IntStock1']) else ''
+    on_order = row['On_Order'] if pd.notna(row['On_Order']) else ''
+    cantidad_confirmada_slip = row['Cantidad_Confirmada_Slip'] if pd.notna(row['Cantidad_Confirmada_Slip']) else ''
+    cantidad_pendiente_directiva = row['Cantidad_Pendiente_Directiva'] if pd.notna(row['Cantidad_Pendiente_Directiva']) else ''
+    ddi_packqty = row['DDI_Packqty']
+    ddi_innerpack = row['DDI_Innerpack']
+    ddi_master_pack = row['DDI_Masterpack']
     validate_packqty = evaluate_packqty(ddi_packqty, tvu, stock, last_sales_day)
     validate_innerpack = evaluate_innerpack(ddi_innerpack, tvu, stock, last_sales_day)
+    validate_masterpack = evaluate_masterpack(ddi_master_pack, tvu, stock, last_sales_day)
+    ideal_size = calculate_ideal_size(days, last_sales_day, tvu, remove_product)
     
     results = {
-        'days': days,
-        'stock': stock,
+        'Fecha': fecha,
+        'idtienda': id_tienda,
+        'TdaNombre': tda_nombre,
+        'DistNombre': dist_nombre,
+        'TdaClasifOper': tda_clasif_oper,
+        'IdProducto': id_producto,
+        'ProdNombre': prod_nombre,
+        'DptoProd': dpto_prod,
+        'ClaseProd': clase_prod,
+        'BloqueoGeneral': bloqueo_general,
+        'BloqueoTiendaCompra': bloqueo_tienda_compra,
+        'Idproveedor': id_proveedor,
+        'ProveeNombre': provee_nombre,
+        'Dias': days,
+        'Stock': stock,
+        'Packqty': packqty,
+        'InnerDisplay': inner_display,
+        'MasterPack': master_pack,
+        'CostoPromedio': costo_promedio,
+        'VtaUltDiasSolesCosto': vta_ult_dias_soles_costo,
         'VtaUltDiasCant': last_sales_day,
-        'tvu': tvu,
-        'remove_product': remove_product,
-        'ddi_master_pack': ddi_master_pack,
-        'ddi_packqty': ddi_packqty,
-        'ddi_innerpack': ddi_innerpack,
-        'validate_packqty': validate_packqty,
-        'validate_innerpack': validate_innerpack,
-        'validate_masterpack': validate_masterpack,
-        'ideal_size': ideal_size
+        'IntStock1': int_stock1,
+        'On_Order': on_order,
+        'Cantidad_Confirmada_Slip': cantidad_confirmada_slip,
+        'Cantidad_Pendiente_Directiva': cantidad_pendiente_directiva,
+        'DDI_Packqty': safe_round(ddi_packqty),
+        'DDI_Innerpack': safe_round(ddi_innerpack),
+        'DDI_Masterpack': safe_round(ddi_master_pack),
+        'TVU': tvu,
+        'Valida_Packqty': validate_packqty,
+        'Valida_IP': validate_innerpack,
+        'Valida_MP': validate_masterpack,
+        'Tamaño ideal (unidades)': ideal_size,
+        'Remover producto': remove_product,
     }
     
-
-    output_dir = 'json_results'
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    output_file_json = os.path.join(output_dir, "result.json")
     resultArray.append(results)
-    with open(output_file_json, 'w') as f:
-        json.dump(resultArray, f, indent=4)
-    
-    print(f'Archivo JSON guardado correctamente en la ruta {output_dir} con el nombre result.json')
 
-    ######### ARCHIVO EXCEL ############
-    output_file_excel = os.path.join(output_dir, "result.xlsx")
-    
-    if os.path.exists(output_file_excel):
-        with pd.ExcelFile(output_file_excel) as xls:
-            existing_df = pd.read_excel(xls, sheet_name='Results', header=2, index_col=None)
-            existing_data = existing_df.copy()
-    else:
-        existing_data = pd.DataFrame(columns=[
-            'days', 'stock', 'VtaUltDiasCant', 'tvu', 'remove_product', 
-            'ddi_master_pack', 'ddi_packqty', 'ddi_innerpack', 
-            'validate_packqty', 'validate_innerpack', 'validate_masterpack', 
-            'ideal_size'
-        ])
+df = pd.DataFrame(resultArray)
 
-    new_record_df = pd.DataFrame([results])
+# Definir el nombre del archivo Excel
+output_file_excel = 'UMP_PROV487_20240604_RESULTS.xlsx'
+
+# Guardar en archivo Excel
+with pd.ExcelWriter(output_file_excel, engine='xlsxwriter') as writer:
+    # Crear hoja de resultados
+    df.to_excel(writer, sheet_name='Resultados', index=False, startrow=2)
+
+    # Obtener el objeto de la hoja
+    worksheet = writer.sheets['Resultados']
     
-    # Usar map en lugar de applymap
-    existing_data = existing_data.applymap(clean_value)
-    new_record_df = new_record_df.applymap(clean_value)
-    
-    # Convertir tipos de datos para el DataFrame de nuevos registros
-    new_record_df = new_record_df.astype({
-        'days': 'int',
-        'stock': 'int',
-        'VtaUltDiasCant': 'int',
-        'tvu': 'int',
-        'remove_product': 'int',
-        'ideal_size': 'int',
-        'ddi_master_pack': 'str',
-        'ddi_packqty': 'str',
-        'ddi_innerpack': 'str',
-        'validate_packqty': 'str',
-        'validate_innerpack': 'str',
-        'validate_masterpack': 'str'
+    # Definir formatos
+    title_format = writer.book.add_format({
+        'bold': True,
+        'align': 'center',
     })
 
-    with pd.ExcelWriter(output_file_excel, engine='xlsxwriter') as writer:
-        worksheet = writer.book.add_worksheet('Results')
+    header_format = writer.book.add_format({
+        'bold': True,
+        'bg_color': '#D9EAD3',
+        'border': 1,
+        'align': 'center'
+    })
 
-        title_format = writer.book.add_format({
-            'bold': True,
-            'font_size': 14,
-            'align': 'center',
-            'valign': 'vcenter',
-            'font_name': 'Arial',
-        })
-        worksheet.merge_range('A1:L1', 'RESULTADOS VALIDACIÓN', title_format)
-        
-        header_format = writer.book.add_format({
-            'bold': True,
-            'text_wrap': True,
-            'valign': 'top',
-            'border': 1,
-            'align': 'center',
-            'bg_color': '#fcf3cf'
+    border_format = writer.book.add_format({
+        'border': 1
+    })
 
-        })
+    date_format = writer.book.add_format({'num_format': 'm/d/yy', 'border': 1})
+    
+    # Aplicar formato a la columna de fecha
+    worksheet.set_column('A:A', 15, date_format)
+    
+    # Aplicar formatos a los encabezados
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(1, col_num, value, header_format)
+    
+    # Aplicar formato a toda la tabla de datos
+    num_rows = len(df.index) + 2
+    worksheet.conditional_format(2, 0, num_rows, len(df.columns) - 1, {'type': 'no_blanks', 'format': border_format})
 
-        field_titles = {
-            'days': 'DÍAS',
-            'stock': 'STOCK',
-            'VtaUltDiasCant': 'VTA_ULT_DÍAS',
-            'tvu': 'TVU',
-            'remove_product': 'REM_PROD',
-            'ddi_master_pack': 'DDI_MASTERPACK',
-            'ddi_packqty': 'DDI_PACKQTY',
-            'ddi_innerpack': 'DDI_INNERPACK',
-            'validate_packqty': 'VALIDAR_PACKQTY',
-            'validate_innerpack': 'VALIDAR_INNERPACK',
-            'validate_masterpack': 'VALIDAR_MASTERPACK',
-            'ideal_size': 'TAMAÑO_IDEAL'
-        }
-
-        for col_num, (col_name, col_title) in enumerate(field_titles.items()):
-            worksheet.write(1, col_num, col_title, header_format)
-
-        start_row = 2
-        for index, row in new_record_df.iterrows():
-            for col_num, value in enumerate(row):
-                worksheet.write(start_row, col_num, value)
-            start_row += 1
-
-    print(f'Archivo Excel guardado correctamente en la ruta {output_dir} con el nombre result.xlsx')
-else:
-    print('No se encontraron coincidencias.')
+print('Los resultados han sido guardados en', output_file_excel)
